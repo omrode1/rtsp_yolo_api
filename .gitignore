@@ -1,0 +1,14 @@
+*.pt
+*.pth
+*.pt.gz
+*.pt.tar
+*.pt.tar.gz
+*.pt.tar.bz2
+*.pt.tar.xz
+*.pt.tar.lzma
+*.pt.tar.7z
+*.pt.tar.zst
+
+#folder
+
+/venv/

@@ -43,7 +43,7 @@ def detect_from_rtsp(rtsp_url: str, max_frames: int = 5, skip_seconds: int = 2):
 
         if count % skip_frames == 0:
             print(f"Processing frame {count} for detection...")
-            results = model(frame)
+            results = model(frame, verbose=False)
             
             frame_data = []
             # YOLOv8 results format

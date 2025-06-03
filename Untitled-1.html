@@ -1,0 +1,499 @@
+
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>RTSP YOLO Detection Stream</title>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                margin: 0;
+                padding: 20px;
+                background-color: #f0f0f0;
+            }}
+            .container {{
+                max-width: 1400px;
+                margin: 0 auto;
+                background-color: white;
+                padding: 20px;
+                border-radius: 10px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            }}
+            h1 {{
+                color: #333;
+                text-align: center;
+            }}
+            .main-content {{
+                display: flex;
+                gap: 20px;
+            }}
+            .video-section {{
+                flex: 2;
+            }}
+            .controls-section {{
+                flex: 1;
+                background-color: #f8f9fa;
+                padding: 20px;
+                border-radius: 10px;
+            }}
+            .video-container {{
+                text-align: center;
+                margin: 20px 0;
+            }}
+            #videoStream {{
+                width: 100%;
+                max-width: 800px;
+                height: auto;
+                border: 2px solid #ddd;
+                border-radius: 10px;
+            }}
+            .stream-controls {{
+                text-align: center;
+                margin: 20px 0;
+            }}
+            input, button, select {{
+                padding: 10px;
+                margin: 5px;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+            }}
+            button {{
+                background-color: #007bff;
+                color: white;
+                cursor: pointer;
+            }}
+            button:hover {{
+                background-color: #0056b3;
+            }}
+            .model-control {{
+                margin: 20px 0;
+                padding: 15px;
+                background-color: #e9ecef;
+                border-radius: 5px;
+            }}
+            .model-control select {{
+                width: 100%;
+                margin: 10px 0;
+            }}
+            .model-info {{
+                font-size: 12px;
+                color: #666;
+                margin-top: 10px;
+            }}
+            .confidence-control {{
+                margin: 20px 0;
+            }}
+            .confidence-slider {{
+                width: 100%;
+                margin: 10px 0;
+            }}
+            .class-filter {{
+                margin: 20px 0;
+            }}
+            .class-checkboxes {{
+                max-height: 300px;
+                overflow-y: auto;
+                border: 1px solid #ddd;
+                padding: 10px;
+                border-radius: 5px;
+                background-color: white;
+            }}
+            .class-checkbox {{
+                display: block;
+                margin: 5px 0;
+                padding: 2px;
+            }}
+            .class-checkbox input {{
+                margin-right: 8px;
+            }}
+            .class-controls {{
+                margin: 10px 0;
+            }}
+            .class-controls button {{
+                margin: 0 5px;
+                padding: 5px 10px;
+                font-size: 12px;
+            }}
+            .api-section {{
+                margin-top: 30px;
+                padding: 20px;
+                background-color: #f8f9fa;
+                border-radius: 5px;
+            }}
+            .loading {{
+                color: #007bff;
+                font-style: italic;
+            }}
+            @media (max-width: 768px) {{
+                .main-content {{
+                    flex-direction: column;
+                }}
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>RTSP YOLO Detection Stream</h1>
+            
+            <div class="main-content">
+                <div class="video-section">
+                    <div class="stream-controls">
+                        <div style="display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap;">
+                            <input type="text" id="cameraSource" placeholder="Camera source (0, 1, or RTSP URL)" value="1" style="flex: 1; min-width: 200px;">
+                            <select id="cameraSelector" onchange="selectCamera()" style="min-width: 150px;">
+                                <option value="">Select Camera...</option>
+                            </select>
+                            <button onclick="detectCameras()">Detect Cameras</button>
+                            <button onclick="startStream()">Start Stream</button>
+                            <button onclick="startTestStream()">Test Stream (Raw)</button>
+                            <button onclick="stopStream()">Stop Stream</button>
+                        </div>
+                        <div id="cameraStatus" style="margin-top: 10px; font-size: 12px; color: #666; text-align: center;">
+                            Camera 1 is working on your system. Stop stream before detecting cameras to avoid conflicts.
+                        </div>
+                    </div>
+                    
+                    <div class="video-container">
+                        <img id="videoStream" src="" alt="Video stream will appear here">
+                    </div>
+                    
+                    <div class="api-section">
+                        <h3>API Endpoint for Detection Only:</h3>
+                        <p><strong>POST</strong> /detect_rtsp/</p>
+                        <pre>{{
+  "rtsp_url": "1",
+  "max_frames": 5,
+  "skip_seconds": 2
+}}</pre>
+                    </div>
+                </div>
+                
+                <div class="controls-section">
+                    <div class="model-control">
+                        <h3>Model Selection</h3>
+                        <select id="modelSelector" onchange="loadModel()">
+                            {model_options_html}
+                        </select>
+                        <button onclick="loadModel()">Load Model</button>
+                        <button onclick="clearGpuMemory()" style="background-color: #dc3545;">Clear GPU Memory</button>
+                        <div id="modelStatus" class="model-info">
+                            Current: {current_model_path} ({len(class_names)} classes)
+                        </div>
+                        <div id="gpuStatus" class="model-info">
+                            <span class="loading">Loading GPU status...</span>
+                        </div>
+                    </div>
+                
+                    <div class="confidence-control">
+                        <h3>Confidence Threshold</h3>
+                        <input type="range" id="confidenceSlider" class="confidence-slider" 
+                               min="0.1" max="0.9" step="0.05" value="0.3" 
+                               oninput="updateConfidence(this.value)">
+                        <div>Confidence: <span id="confidenceValue">0.30</span></div>
+                    </div>
+                    
+                    <div class="class-filter">
+                        <h3>Class Filter</h3>
+                        <div class="class-controls">
+                            <button onclick="selectAllClasses()">Select All</button>
+                            <button onclick="deselectAllClasses()">Deselect All</button>
+                        </div>
+                        <div id="classCheckboxes" class="class-checkboxes">
+                            {checkboxes_html}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            let selectedClasses = new Set();
+            let currentConfidence = 0.3;
+            let availableCameras = [];
+            
+            // Initialize with all classes selected
+            function initializeClasses() {{
+                const checkboxes = document.querySelectorAll('.class-checkbox input');
+                checkboxes.forEach(checkbox => {{
+                    selectedClasses.add(parseInt(checkbox.value));
+                }});
+            }}
+            
+            async function detectCameras() {{
+                const statusDiv = document.getElementById('cameraStatus');
+                statusDiv.innerHTML = '<span class="loading">Stopping active streams...</span>';
+                
+                // Stop any active streams first
+                stopStream();
+                
+                // Wait a moment for streams to stop
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                statusDiv.innerHTML = '<span class="loading">Detecting cameras...</span>';
+                
+                try {{
+                    const response = await fetch('/get_cameras');
+                    const result = await response.json();
+                    
+                    if (result.status === 'success') {{
+                        availableCameras = result.cameras;
+                        updateCameraSelector();
+                        
+                        const workingCameras = availableCameras.filter(cam => cam.status === 'working');
+                        
+                        if (workingCameras.length > 0) {{
+                            statusDiv.innerHTML = `Found ${{workingCameras.length}} working camera(s) out of ${{availableCameras.length}} detected`;
+                            // Auto-select first working camera
+                            document.getElementById('cameraSource').value = workingCameras[0].index;
+                        }} else {{
+                            let statusMessage = `<span style="color: orange;">No working cameras found. Detected ${{availableCameras.length}} device(s):</span><br>`;
+                            availableCameras.forEach(cam => {{
+                                const statusIcon = cam.status === 'working' ? '✅' : 
+                                                 cam.status === 'no_signal' ? '⚠️' : 
+                                                 cam.status === 'cannot_open' ? '🔒' : '❌';
+                                statusMessage += `${{statusIcon}} Camera ${{cam.index}}: ${{cam.status}} ${{cam.error ? '(' + cam.error + ')' : ''}}<br>`;
+                            }});
+                            statusMessage += '<br><strong>Try:</strong> Stop the video stream first, then detect cameras. Camera 1 is known to work on your system.';
+                            statusDiv.innerHTML = statusMessage;
+                        }}
+                    }} else {{
+                        statusDiv.innerHTML = `<span style="color: red;">Error detecting cameras: ${{result.message}}</span>`;
+                    }}
+                }} catch (error) {{
+                    statusDiv.innerHTML = `<span style="color: red;">Error: ${{error.message}}</span>`;
+                }}
+            }}
+            
+            function updateCameraSelector() {{
+                const selector = document.getElementById('cameraSelector');
+                selector.innerHTML = '<option value="">Select Camera...</option>';
+                
+                availableCameras.forEach(camera => {{
+                    const option = document.createElement('option');
+                    option.value = camera.index;
+                    
+                    const statusIcon = camera.status === 'working' ? '✅' : 
+                                     camera.status === 'no_signal' ? '⚠️' : 
+                                     camera.status === 'cannot_open' ? '🔒' : '❌';
+                    
+                    if (camera.status === 'working') {{
+                        option.textContent = `${{statusIcon}} ${{camera.name}} (${{camera.resolution}}, ${{camera.fps}}fps)`;
+                    }} else {{
+                        option.textContent = `${{statusIcon}} ${{camera.name}} - ${{camera.status}}`;
+                        option.disabled = true;
+                        option.style.color = '#999';
+                    }}
+                    
+                    selector.appendChild(option);
+                }});
+                
+                // Add RTSP option
+                const rtspOption = document.createElement('option');
+                rtspOption.value = 'rtsp';
+                rtspOption.textContent = '📡 Enter RTSP URL manually';
+                selector.appendChild(rtspOption);
+            }}
+            
+            function selectCamera() {{
+                const selector = document.getElementById('cameraSelector');
+                const cameraSource = document.getElementById('cameraSource');
+                
+                if (selector.value) {{
+                    cameraSource.value = selector.value;
+                    
+                    // Find camera info
+                    const camera = availableCameras.find(cam => cam.index == selector.value);
+                    if (camera) {{
+                        document.getElementById('cameraStatus').innerHTML = 
+                            `Selected: ${{camera.name}} (${{camera.resolution}}, ${{camera.fps}}fps)`;
+                    }}
+                }}
+            }}
+            
+            function startStream() {{
+                const cameraSource = document.getElementById('cameraSource').value;
+                const videoElement = document.getElementById('videoStream');
+                const timestamp = new Date().getTime();
+                videoElement.src = `/video_feed/${encodeURIComponent(cameraSource)}?t=${timestamp}`;
+                videoElement.style.display = 'block';
+                console.log('Started YOLO stream:', videoElement.src);
+            }}
+            
+            function startTestStream() {{
+                const cameraSource = document.getElementById('cameraSource').value;
+                const videoElement = document.getElementById('videoStream');
+                const timestamp = new Date().getTime();
+                videoElement.src = `/test_video_feed/${encodeURIComponent(cameraSource)}?t=${timestamp}`;
+                videoElement.style.display = 'block';
+                console.log('Started test stream:', videoElement.src);
+            }}
+            
+            function stopStream() {{
+                const videoElement = document.getElementById('videoStream');
+                videoElement.src = '';
+                videoElement.style.display = 'none';
+            }}
+            
+            function updateConfidence(value) {{
+                currentConfidence = parseFloat(value);
+                document.getElementById('confidenceValue').textContent = value;
+                sendSettings();
+            }}
+            
+            function updateClassFilter() {{
+                selectedClasses.clear();
+                const checkboxes = document.querySelectorAll('.class-checkbox input:checked');
+                checkboxes.forEach(checkbox => {{
+                    selectedClasses.add(parseInt(checkbox.value));
+                }});
+                sendSettings();
+            }}
+            
+            function selectAllClasses() {{
+                const checkboxes = document.querySelectorAll('.class-checkbox input');
+                checkboxes.forEach(checkbox => {{
+                    checkbox.checked = true;
+                }});
+                updateClassFilter();
+            }}
+            
+            function deselectAllClasses() {{
+                const checkboxes = document.querySelectorAll('.class-checkbox input');
+                checkboxes.forEach(checkbox => {{
+                    checkbox.checked = false;
+                }});
+                updateClassFilter();
+            }}
+            
+            async function loadModel() {{
+                const modelSelector = document.getElementById('modelSelector');
+                const modelPath = modelSelector.value;
+                const statusDiv = document.getElementById('modelStatus');
+                
+                statusDiv.innerHTML = '<span class="loading">Loading model...</span>';
+                
+                try {{
+                    const response = await fetch('/load_model', {{
+                        method: 'POST',
+                        headers: {{
+                            'Content-Type': 'application/json',
+                        }},
+                        body: JSON.stringify({{
+                            model_path: modelPath
+                        }})
+                    }});
+                    
+                    const result = await response.json();
+                    
+                    if (result.status === 'success') {{
+                        statusDiv.innerHTML = `Current: ${{result.model_path}} (${{result.num_classes}} classes)`;
+                        
+                        // Update class checkboxes dynamically
+                        updateClassCheckboxes(result.class_names);
+                        
+                        // Update GPU status after model loading
+                        updateGpuStatus();
+                        
+                        // Restart stream to use new model if it was running
+                        const videoElement = document.getElementById('videoStream');
+                        if (videoElement.src && videoElement.style.display !== 'none') {{
+                            setTimeout(() => {{
+                                startStream();
+                            }}, 500); // Small delay to ensure model is ready
+                        }}
+                    }} else {{
+                        statusDiv.innerHTML = `<span style="color: red;">Error: ${{result.detail}}</span>`;
+                    }}
+                }} catch (error) {{
+                    statusDiv.innerHTML = `<span style="color: red;">Error loading model: ${{error.message}}</span>`;
+                }}
+            }}
+            
+            async function clearGpuMemory() {{
+                const gpuStatusDiv = document.getElementById('gpuStatus');
+                gpuStatusDiv.innerHTML = '<span class="loading">Clearing GPU memory...</span>';
+                
+                try {{
+                    const response = await fetch('/clear_gpu_memory', {{
+                        method: 'POST',
+                        headers: {{
+                            'Content-Type': 'application/json',
+                        }}
+                    }});
+                    
+                    const result = await response.json();
+                    
+                    if (result.status === 'success') {{
+                        gpuStatusDiv.innerHTML = '<span style="color: green;">GPU memory cleared successfully</span>';
+                        // Update GPU status after clearing
+                        setTimeout(updateGpuStatus, 1000);
+                    }} else {{
+                        gpuStatusDiv.innerHTML = `<span style="color: red;">Error: ${{result.message}}</span>`;
+                    }}
+                }} catch (error) {{
+                    gpuStatusDiv.innerHTML = `<span style="color: red;">Error clearing memory: ${{error.message}}</span>`;
+                }}
+            }}
+            
+            async function updateGpuStatus() {{
+                try {{
+                    const response = await fetch('/gpu_status');
+                    const gpuInfo = await response.json();
+                    const gpuStatusDiv = document.getElementById('gpuStatus');
+                    
+                    if (gpuInfo.gpu_available) {{
+                        const allocatedPercent = ((gpuInfo.allocated_memory_gb / gpuInfo.total_memory_gb) * 100).toFixed(1);
+                        gpuStatusDiv.innerHTML = `
+                            GPU: ${{gpuInfo.device_name}}<br>
+                            Memory: ${{gpuInfo.allocated_memory_gb}}GB / ${{gpuInfo.total_memory_gb}}GB (${{allocatedPercent}}%)
+                        `;
+                    }} else {{
+                        gpuStatusDiv.innerHTML = 'GPU: Not available (CPU mode)';
+                    }}
+                }} catch (error) {{
+                    document.getElementById('gpuStatus').innerHTML = 'GPU status: Error loading';
+                }}
+            }}
+            
+            function updateClassCheckboxes(classNames) {{
+                const container = document.getElementById('classCheckboxes');
+                let checkboxesHtml = '';
+                
+                // Clear current selection
+                selectedClasses.clear();
+                
+                // Create new checkboxes
+                Object.entries(classNames).forEach(([classId, className]) => {{
+                    checkboxesHtml += `
+                        <label class="class-checkbox">
+                            <input type="checkbox" value="${{classId}}" checked onchange="updateClassFilter()"> ${{className}}
+                        </label>
+                    `;
+                    selectedClasses.add(parseInt(classId));
+                }});
+                
+                container.innerHTML = checkboxesHtml;
+                sendSettings();
+            }}
+            
+            function sendSettings() {{
+                fetch('/update_settings', {{
+                    method: 'POST',
+                    headers: {{
+                        'Content-Type': 'application/json',
+                    }},
+                    body: JSON.stringify({{
+                        selected_classes: Array.from(selectedClasses),
+                        confidence: currentConfidence
+                    }})
+                }});
+            }}
+            
+            // Initialize when page loads
+            window.onload = function() {{
+                initializeClasses();
+                updateGpuStatus();
+                detectCameras(); // Auto-detect cameras on page load
+            }}
+        </script>
+    </body>
+    </html>

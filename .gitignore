@@ -12,3 +12,6 @@
 #folder
 
 /venv/
+__pycache__/detector.cpython-313.pyc
+__pycache__/main.cpython-313.pyc
+__pycache__/main.cpython-313.pyc

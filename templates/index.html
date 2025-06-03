@@ -123,6 +123,39 @@
             color: #007bff;
             font-style: italic;
         }
+        /* Toggle switch CSS */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+        .switch input {display:none;}
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 24px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #007bff;
+        }
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
         @media (max-width: 768px) {
             .main-content {
                 flex-direction: column;
@@ -189,6 +222,14 @@
                     <h3>Confidence Threshold</h3>
                     <input type="range" id="confidenceSlider" class="confidence-slider" min="0.1" max="0.9" step="0.05" value="0.3" oninput="updateConfidence(this.value)">
                     <div>Confidence: <span id="confidenceValue">0.30</span></div>
+                </div>
+                <div class="tracking-control" style="margin: 20px 0;">
+                    <h3>Tracking</h3>
+                    <label class="switch">
+                        <input type="checkbox" id="trackingToggle" onchange="updateTracking()">
+                        <span class="slider round"></span>
+                    </label>
+                    <span id="trackingStatus">Off</span>
                 </div>
                 <div class="class-filter">
                     <h3>Class Filter</h3>

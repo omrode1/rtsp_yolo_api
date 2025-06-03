@@ -13,6 +13,7 @@ import time
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi import Request
+import asyncio
 
 app = FastAPI()
 
@@ -23,6 +24,7 @@ current_model_path = "yolov8n.pt"
 # Global variables for filtering
 selected_classes = set(range(80))  # All classes selected by default
 confidence_threshold = 0.3
+tracking_enabled = False
 
 class StreamRequest(BaseModel):
     rtsp_url: str
@@ -110,7 +112,7 @@ def release_gpu_memory():
 
 def generate_frames(camera_source):
     """Generate video frames with YOLO detection overlays and heartbeat frames if slow."""
-    global selected_classes, confidence_threshold, model
+    global selected_classes, confidence_threshold, model, tracking_enabled
     
     print(f"Starting video stream for camera: {camera_source}")
     
@@ -155,14 +157,16 @@ def generate_frames(camera_source):
                         frame_sent = True
                     continue
                 
-            
-                start_time = time.time()
-                results = model(frame, conf=confidence_threshold, verbose=False)
-                yolo_time = time.time() - start_time
+                # Use tracking if enabled
+                if tracking_enabled:
+                    results = model.track(frame, conf=confidence_threshold, verbose=False, persist=True)
+                else:
+                    results = model(frame, conf=confidence_threshold, verbose=False)
                 
                 # Draw detection boxes and labels for selected classes only
                 for result in results:
                     boxes = result.boxes
+                    ids = getattr(boxes, 'id', None) if boxes is not None else None
                     if boxes is not None:
                         for i in range(len(boxes)):
                             cls = int(boxes.cls[i].cpu().numpy())
@@ -171,14 +175,16 @@ def generate_frames(camera_source):
                             box = boxes.xyxy[i].cpu().numpy().astype(int)
                             conf = boxes.conf[i].cpu().numpy()
                             class_name = model.names[cls]
-                            cv2.rectangle(frame, (box[0], box[1]), (box[2], box[3]), (0, 255, 0), 2)
                             label = f"{class_name}: {conf:.2f}"
+                            if tracking_enabled and ids is not None:
+                                track_id = int(ids[i].cpu().numpy())
+                                label = f"ID {track_id} | {label}"
+                            cv2.rectangle(frame, (box[0], box[1]), (box[2], box[3]), (0, 255, 0), 2)
                             label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
                             cv2.rectangle(frame, (box[0], box[1] - label_size[1] - 10), 
                                         (box[0] + label_size[0], box[1]), (0, 255, 0), -1)
                             cv2.putText(frame, label, (box[0], box[1] - 5), 
                                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
-                # print(f"[YOLO] Frame shape: {frame.shape}, dtype: {frame.dtype}, YOLO time: {yolo_time:.2f}s")
                 
                 # Encode and send frame
                 ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
@@ -186,7 +192,6 @@ def generate_frames(camera_source):
                     frame_bytes = buffer.tobytes()
                     yield (b'--frame\r\n'
                            b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-                    # print(f"[SEND] YOLO frame {frame_count}")
                     frame_sent = True
                 else:
                     print("Failed to encode YOLO frame")
@@ -206,6 +211,8 @@ def generate_frames(camera_source):
                            b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
                     print(f"[SEND] Heartbeat frame after {frame_count} frames")
                 last_sent = time.time()
+    except asyncio.CancelledError:
+        print(f"Stream cancelled by client for camera {camera_source}")
     except Exception as e:
         print(f"Camera error: {e}")
     finally:
@@ -258,6 +265,8 @@ def generate_test_frames(camera_source):
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
     
+    except asyncio.CancelledError:
+        print(f"Test stream cancelled by client for camera {camera_source}")
     except Exception as e:
         print(f"Test camera error: {e}")
     finally:
@@ -381,7 +390,7 @@ async def clear_gpu_memory():
 @app.post("/update_settings")
 async def update_settings(settings: dict):
     """Update class filtering and confidence threshold"""
-    global selected_classes, confidence_threshold
+    global selected_classes, confidence_threshold, tracking_enabled
     
     if 'selected_classes' in settings:
         selected_classes = set(settings['selected_classes'])
@@ -389,7 +398,10 @@ async def update_settings(settings: dict):
     if 'confidence' in settings:
         confidence_threshold = float(settings['confidence'])
     
-    return {"status": "success", "selected_classes": list(selected_classes), "confidence": confidence_threshold}
+    if 'tracking' in settings:
+        tracking_enabled = bool(settings['tracking'])
+    
+    return {"status": "success", "selected_classes": list(selected_classes), "confidence": confidence_threshold, "tracking": tracking_enabled}
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")

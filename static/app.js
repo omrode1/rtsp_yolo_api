@@ -1,6 +1,7 @@
 let selectedClasses = new Set();
 let currentConfidence = 0.3;
 let availableCameras = [];
+let trackingEnabled = false;
 
 // Initialize with all classes selected
 function initializeClasses() {
@@ -228,6 +229,14 @@ function updateClassCheckboxes(classNames) {
     sendSettings();
 }
 
+function updateTracking() {
+    const toggle = document.getElementById('trackingToggle');
+    const status = document.getElementById('trackingStatus');
+    trackingEnabled = toggle.checked;
+    status.textContent = trackingEnabled ? 'On' : 'Off';
+    sendSettings();
+}
+
 function sendSettings() {
     fetch('/update_settings', {
         method: 'POST',
@@ -236,7 +245,8 @@ function sendSettings() {
         },
         body: JSON.stringify({
             selected_classes: Array.from(selectedClasses),
-            confidence: currentConfidence
+            confidence: currentConfidence,
+            tracking: trackingEnabled
         })
     });
 }
@@ -291,4 +301,6 @@ window.onload = function() {
     initializeClasses();
     updateGpuStatus();
     detectCameras();
+    document.getElementById('trackingToggle').checked = false;
+    document.getElementById('trackingStatus').textContent = 'Off';
 }; 

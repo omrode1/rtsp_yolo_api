@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi import Request
 import asyncio
+import yaml
 
 app = FastAPI()
 
@@ -25,6 +26,23 @@ current_model_path = "yolov8n.pt"
 selected_classes = set(range(80))  # All classes selected by default
 confidence_threshold = 0.3
 tracking_enabled = False
+
+def update_tracker_config(track_high_thresh=0.5, track_low_thresh=0.1, new_track_thresh=0.6, 
+                         track_buffer=30, match_thresh=0.8, frame_rate=30):
+    """Update the tracker configuration file"""
+    config = {
+        'tracker_type': 'bytetrack',
+        'track_high_thresh': track_high_thresh,
+        'track_low_thresh': track_low_thresh,
+        'new_track_thresh': new_track_thresh,
+        'track_buffer': track_buffer,
+        'match_thresh': match_thresh,
+        'frame_rate': frame_rate,
+        'fuse_score': True
+    }
+    
+    with open('tracker_config.yaml', 'w') as f:
+        yaml.dump(config, f)
 
 class StreamRequest(BaseModel):
     rtsp_url: str
@@ -131,9 +149,20 @@ def generate_frames(camera_source):
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     cap.set(cv2.CAP_PROP_FPS, 30)
     
+    # Set buffer size to minimum to reduce latency
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    
     print(f"Camera opened successfully: {camera_source}")
     frame_count = 0
     last_sent = time.time()
+    last_detection_time = time.time()
+    detection_interval = 1.0 / 30  # Increased to 30 FPS for smoother tracking
+    
+    # Store previous detections for interpolation
+    prev_boxes = []
+    prev_ids = []
+    prev_classes = []
+    prev_confs = []
     
     try:
         while True:
@@ -144,6 +173,8 @@ def generate_frames(camera_source):
             
             frame_count += 1
             frame_sent = False
+            current_time = time.time()
+            
             try:
                 # Check if model exists and is valid
                 if model is None:
@@ -157,34 +188,81 @@ def generate_frames(camera_source):
                         frame_sent = True
                     continue
                 
-                # Use tracking if enabled
-                if tracking_enabled:
-                    results = model.track(frame, conf=confidence_threshold, verbose=False, persist=True)
-                else:
-                    results = model(frame, conf=confidence_threshold, verbose=False)
+                # Only run detection if enough time has passed
+                if current_time - last_detection_time >= detection_interval:
+                    # Use tracking if enabled
+                    if tracking_enabled:
+                        results = model.track(
+                            frame, 
+                            conf=confidence_threshold, 
+                            verbose=False, 
+                            persist=True,
+                            tracker="bytetrack.yaml"
+                        )
+                    else:
+                        results = model(frame, conf=confidence_threshold, verbose=False)
+                    
+                    last_detection_time = current_time
+                    
+                    # Store current detections
+                    current_boxes = []
+                    current_ids = []
+                    current_classes = []
+                    current_confs = []
+                    
+                    # Process new detections
+                    for result in results:
+                        boxes = result.boxes
+                        ids = getattr(boxes, 'id', None) if boxes is not None else None
+                        if boxes is not None:
+                            for i in range(len(boxes)):
+                                cls = int(boxes.cls[i].cpu().numpy())
+                                if cls not in selected_classes:
+                                    continue
+                                box = boxes.xyxy[i].cpu().numpy().astype(int)
+                                conf = boxes.conf[i].cpu().numpy()
+                                current_boxes.append(box)
+                                current_classes.append(cls)
+                                current_confs.append(conf)
+                                if tracking_enabled and ids is not None:
+                                    current_ids.append(int(ids[i].cpu().numpy()))
+                                else:
+                                    current_ids.append(None)
+                    
+                    # Update previous detections
+                    prev_boxes = current_boxes
+                    prev_ids = current_ids
+                    prev_classes = current_classes
+                    prev_confs = current_confs
                 
-                # Draw detection boxes and labels for selected classes only
-                for result in results:
-                    boxes = result.boxes
-                    ids = getattr(boxes, 'id', None) if boxes is not None else None
-                    if boxes is not None:
-                        for i in range(len(boxes)):
-                            cls = int(boxes.cls[i].cpu().numpy())
-                            if cls not in selected_classes:
-                                continue
-                            box = boxes.xyxy[i].cpu().numpy().astype(int)
-                            conf = boxes.conf[i].cpu().numpy()
-                            class_name = model.names[cls]
-                            label = f"{class_name}: {conf:.2f}"
-                            if tracking_enabled and ids is not None:
-                                track_id = int(ids[i].cpu().numpy())
-                                label = f"ID {track_id} | {label}"
-                            cv2.rectangle(frame, (box[0], box[1]), (box[2], box[3]), (0, 255, 0), 2)
-                            label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
-                            cv2.rectangle(frame, (box[0], box[1] - label_size[1] - 10), 
-                                        (box[0] + label_size[0], box[1]), (0, 255, 0), -1)
-                            cv2.putText(frame, label, (box[0], box[1] - 5), 
-                                      cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+                # Draw boxes using current or previous detections
+                boxes_to_draw = prev_boxes
+                ids_to_draw = prev_ids
+                classes_to_draw = prev_classes
+                confs_to_draw = prev_confs
+                
+                for i in range(len(boxes_to_draw)):
+                    box = boxes_to_draw[i]
+                    cls = classes_to_draw[i]
+                    conf = confs_to_draw[i]
+                    track_id = ids_to_draw[i]
+                    
+                    class_name = model.names[cls]
+                    label = f"{class_name}: {conf:.2f}"
+                    if tracking_enabled and track_id is not None:
+                        label = f"ID {track_id} | {label}"
+                    
+                    # Draw box with anti-aliasing
+                    cv2.rectangle(frame, (box[0], box[1]), (box[2], box[3]), (0, 255, 0), 2)
+                    
+                    # Draw label background with anti-aliasing
+                    label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
+                    cv2.rectangle(frame, (box[0], box[1] - label_size[1] - 10), 
+                                (box[0] + label_size[0], box[1]), (0, 255, 0), -1)
+                    
+                    # Draw label text
+                    cv2.putText(frame, label, (box[0], box[1] - 5), 
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
                 
                 # Encode and send frame
                 ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
@@ -389,7 +467,7 @@ async def clear_gpu_memory():
 
 @app.post("/update_settings")
 async def update_settings(settings: dict):
-    """Update class filtering and confidence threshold"""
+    """Update class filtering, confidence threshold, and tracking parameters"""
     global selected_classes, confidence_threshold, tracking_enabled
     
     if 'selected_classes' in settings:
@@ -401,7 +479,24 @@ async def update_settings(settings: dict):
     if 'tracking' in settings:
         tracking_enabled = bool(settings['tracking'])
     
-    return {"status": "success", "selected_classes": list(selected_classes), "confidence": confidence_threshold, "tracking": tracking_enabled}
+    # Update tracker configuration if tracking parameters are provided
+    if tracking_enabled:
+        track_high_thresh = float(settings.get('track_thresh', 0.5))
+        track_buffer = int(settings.get('track_buffer', 30))
+        match_thresh = float(settings.get('match_thresh', 0.8))
+        
+        update_tracker_config(
+            track_high_thresh=track_high_thresh,
+            track_buffer=track_buffer,
+            match_thresh=match_thresh
+        )
+    
+    return {
+        "status": "success", 
+        "selected_classes": list(selected_classes), 
+        "confidence": confidence_threshold, 
+        "tracking": tracking_enabled
+    }
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")

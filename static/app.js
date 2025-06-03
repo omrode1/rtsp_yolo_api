@@ -2,6 +2,9 @@ let selectedClasses = new Set();
 let currentConfidence = 0.3;
 let availableCameras = [];
 let trackingEnabled = false;
+let trackThresh = 0.5;
+let trackBuffer = 30;
+let matchThresh = 0.8;
 
 // Initialize with all classes selected
 function initializeClasses() {
@@ -232,8 +235,28 @@ function updateClassCheckboxes(classNames) {
 function updateTracking() {
     const toggle = document.getElementById('trackingToggle');
     const status = document.getElementById('trackingStatus');
+    const paramsDiv = document.getElementById('trackingParams');
     trackingEnabled = toggle.checked;
     status.textContent = trackingEnabled ? 'On' : 'Off';
+    paramsDiv.style.display = trackingEnabled ? 'block' : 'none';
+    sendSettings();
+}
+
+function updateTrackThresh(value) {
+    trackThresh = parseFloat(value);
+    document.getElementById('trackThreshValue').textContent = value;
+    sendSettings();
+}
+
+function updateTrackBuffer(value) {
+    trackBuffer = parseInt(value);
+    document.getElementById('trackBufferValue').textContent = value;
+    sendSettings();
+}
+
+function updateMatchThresh(value) {
+    matchThresh = parseFloat(value);
+    document.getElementById('matchThreshValue').textContent = value;
     sendSettings();
 }
 
@@ -246,7 +269,10 @@ function sendSettings() {
         body: JSON.stringify({
             selected_classes: Array.from(selectedClasses),
             confidence: currentConfidence,
-            tracking: trackingEnabled
+            tracking: trackingEnabled,
+            track_thresh: trackThresh,
+            track_buffer: trackBuffer,
+            match_thresh: matchThresh
         })
     });
 }
@@ -303,4 +329,5 @@ window.onload = function() {
     detectCameras();
     document.getElementById('trackingToggle').checked = false;
     document.getElementById('trackingStatus').textContent = 'Off';
+    document.getElementById('trackingParams').style.display = 'none';
 }; 

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Batch Processing - RTSP YOLO</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="styles.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">RTSP YOLO</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Live Stream</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/batch.html">Batch Processing</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Upload Files</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="uploadForm">
+                            <div class="mb-3">
+                                <label for="fileInput" class="form-label">Select Files</label>
+                                <input type="file" class="form-control" id="fileInput" multiple accept=".jpg,.jpeg,.png,.mp4,.avi">
+                            </div>
+                            <button type="submit" class="btn btn-primary">Upload</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Processing Settings</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="modelSelect" class="form-label">Model</label>
+                            <select class="form-select" id="modelSelect"></select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="confidenceRange" class="form-label">Confidence Threshold</label>
+                            <input type="range" class="form-range" id="confidenceRange" min="0" max="100" value="25">
+                            <div class="text-center" id="confidenceValue">25%</div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="trackingCheck">
+                                <label class="form-check-label" for="trackingCheck">
+                                    Enable Tracking
+                                </label>
+                            </div>
+                        </div>
+                        <button id="processBtn" class="btn btn-success" disabled>Process Files</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Results</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="resultsContainer" class="row g-3">
+                            <!-- Results will be displayed here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let uploadedFiles = [];
+
+        // Load available models
+        async function loadModels() {
+            const response = await fetch('/api/models');
+            const models = await response.json();
+            const select = document.getElementById('modelSelect');
+            select.innerHTML = models.map(model => 
+                `<option value="${model}">${model}</option>`
+            ).join('');
+        }
+
+        // Handle file upload
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fileInput = document.getElementById('fileInput');
+            const formData = new FormData();
+            
+            for (const file of fileInput.files) {
+                formData.append('files', file);
+            }
+
+            try {
+                const response = await fetch('/api/batch/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                uploadedFiles = result.files;
+                document.getElementById('processBtn').disabled = false;
+                alert('Files uploaded successfully!');
+            } catch (error) {
+                alert('Error uploading files: ' + error.message);
+            }
+        });
+
+        // Handle processing
+        document.getElementById('processBtn').addEventListener('click', async () => {
+            const modelName = document.getElementById('modelSelect').value;
+            const confidence = document.getElementById('confidenceRange').value / 100;
+            const trackingEnabled = document.getElementById('trackingCheck').checked;
+
+            try {
+                const response = await fetch('/api/batch/process', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        files: uploadedFiles.map(f => f.filename),
+                        model_name: modelName,
+                        confidence: confidence,
+                        tracking_enabled: trackingEnabled
+                    })
+                });
+                const results = await response.json();
+                displayResults(results.results);
+            } catch (error) {
+                alert('Error processing files: ' + error.message);
+            }
+        });
+
+        // Display results
+        function displayResults(results) {
+            const container = document.getElementById('resultsContainer');
+            container.innerHTML = '';
+
+            results.forEach(result => {
+                const card = document.createElement('div');
+                card.className = 'col-md-6';
+                card.innerHTML = `
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">${result.filename}</h5>
+                            <p class="card-text">
+                                Type: ${result.type}<br>
+                                Detections: ${result.results.length}
+                            </p>
+                            <button class="btn btn-primary btn-sm" onclick="showDetails('${result.filename}')">
+                                View Details
+                            </button>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // Show detailed results
+        function showDetails(filename) {
+            // TODO: Implement detailed view modal
+            alert('Detailed view coming soon!');
+        }
+
+        // Update confidence value display
+        document.getElementById('confidenceRange').addEventListener('input', (e) => {
+            document.getElementById('confidenceValue').textContent = e.target.value + '%';
+        });
+
+        // Initialize
+        loadModels();
+    </script>
+</body>
+</html> 

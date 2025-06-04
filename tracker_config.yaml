@@ -2,7 +2,7 @@ frame_rate: 30
 fuse_score: true
 match_thresh: 0.8
 new_track_thresh: 0.6
-track_buffer: 60
-track_high_thresh: 0.4
+track_buffer: 57
+track_high_thresh: 0.5
 track_low_thresh: 0.1
 tracker_type: bytetrack

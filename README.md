@@ -1,4 +1,4 @@
-# RTSP YOLOv8 Model Testing Platform
+# RTSP YOLO Model Testing Platform
 
 A FastAPI-based web application for real-time object detection, tracking, and model evaluation using YOLOv8. Supports live camera/RTSP streams, batch image/video testing, model management, and is designed for extensibility and mobile-friendliness.
 

@@ -1,5 +1,5 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
-from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse, HTMLResponse
 from pydantic import BaseModel
 from detector import detect_from_rtsp
 import cv2
@@ -15,12 +15,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi import Request
 import asyncio
 import yaml
-from typing import List, Optional
-import shutil
-from pathlib import Path
-import json
-from datetime import datetime
-from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
@@ -32,21 +26,6 @@ current_model_path = "yolov8n.pt"
 selected_classes = set(range(80))  # All classes selected by default
 confidence_threshold = 0.3
 tracking_enabled = False
-
-# Add new directory for batch processing
-BATCH_UPLOAD_DIR = "batch_uploads"
-BATCH_RESULTS_DIR = "batch_results"
-os.makedirs(BATCH_UPLOAD_DIR, exist_ok=True)
-os.makedirs(BATCH_RESULTS_DIR, exist_ok=True)
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 def update_tracker_config(track_high_thresh=0.5, track_low_thresh=0.1, new_track_thresh=0.6, 
                          track_buffer=30, match_thresh=0.8, frame_rate=30):
@@ -526,14 +505,16 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 @app.get("/")
-async def read_root():
-    with open("static/index.html") as f:
-        return HTMLResponse(content=f.read())
-
-@app.get("/batch.html")
-async def read_batch():
-    with open("static/batch.html") as f:
-        return HTMLResponse(content=f.read())
+async def index(request: Request):
+    """Serve the main HTML page using Jinja2 template"""
+    class_names = model.names
+    available_models = get_available_models()
+    return templates.TemplateResponse("index.html", {
+        "request": request,
+        "class_names": class_names,
+        "available_models": available_models,
+        "current_model_path": current_model_path
+    })
 
 @app.get("/video_feed/{camera_source}")
 async def video_feed(camera_source: str):
@@ -591,113 +572,3 @@ async def upload_model(file: UploadFile = File(...)):
         return {"status": "success", "message": f"Model {file.filename} uploaded successfully.", "model_path": file.filename}
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
-@app.post("/api/batch/upload")
-async def upload_batch_files(files: List[UploadFile] = File(...)):
-    """Upload multiple files for batch processing"""
-    uploaded_files = []
-    for file in files:
-        # Validate file type
-        if not file.filename.lower().endswith(('.jpg', '.jpeg', '.png', '.mp4', '.avi')):
-            raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.filename}")
-        
-        # Create unique filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{timestamp}_{file.filename}"
-        file_path = os.path.join(BATCH_UPLOAD_DIR, filename)
-        
-        # Save file
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        
-        uploaded_files.append({
-            "filename": filename,
-            "path": file_path,
-            "type": "video" if file.filename.lower().endswith(('.mp4', '.avi')) else "image"
-        })
-    
-    return {"message": "Files uploaded successfully", "files": uploaded_files}
-
-@app.post("/api/batch/process")
-async def process_batch_files(
-    files: List[str],
-    model_name: str,
-    confidence: float = 0.25,
-    classes: Optional[List[int]] = None,
-    tracking_enabled: bool = False
-):
-    """Process multiple files with the selected model"""
-    if not model_name or model_name not in get_available_models():
-        raise HTTPException(status_code=400, detail="Invalid model name")
-    
-    results = []
-    model = YOLO(os.path.join(BATCH_UPLOAD_DIR, model_name))
-    
-    for filename in files:
-        file_path = os.path.join(BATCH_UPLOAD_DIR, filename)
-        if not os.path.exists(file_path):
-            continue
-            
-        is_video = filename.lower().endswith(('.mp4', '.avi'))
-        result = {
-            "filename": filename,
-            "type": "video" if is_video else "image",
-            "results": []
-        }
-        
-        if is_video:
-            cap = cv2.VideoCapture(file_path)
-            frame_count = 0
-            while cap.isOpened():
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                    
-                if tracking_enabled:
-                    detections = model.track(frame, conf=confidence, classes=classes, verbose=False)
-                else:
-                    detections = model(frame, conf=confidence, classes=classes, verbose=False)
-                
-                if detections:
-                    for det in detections:
-                        boxes = det.boxes
-                        for box in boxes:
-                            result["results"].append({
-                                "frame": frame_count,
-                                "class": int(box.cls[0]),
-                                "confidence": float(box.conf[0]),
-                                "bbox": box.xyxy[0].tolist()
-                            })
-                frame_count += 1
-            cap.release()
-        else:
-            frame = cv2.imread(file_path)
-            if frame is not None:
-                if tracking_enabled:
-                    detections = model.track(frame, conf=confidence, classes=classes, verbose=False)
-                else:
-                    detections = model(frame, conf=confidence, classes=classes, verbose=False)
-                
-                if detections:
-                    for det in detections:
-                        boxes = det.boxes
-                        for box in boxes:
-                            result["results"].append({
-                                "class": int(box.cls[0]),
-                                "confidence": float(box.conf[0]),
-                                "bbox": box.xyxy[0].tolist()
-                            })
-        
-        results.append(result)
-    
-    return {"results": results}
-
-@app.get("/api/batch/results")
-async def get_batch_results():
-    """Get list of processed batch results"""
-    results = []
-    for filename in os.listdir(BATCH_RESULTS_DIR):
-        if filename.endswith('.json'):
-            with open(os.path.join(BATCH_RESULTS_DIR, filename), 'r') as f:
-                results.append(json.load(f))
-    return results

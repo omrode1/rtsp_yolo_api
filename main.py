@@ -15,8 +15,24 @@ from fastapi.staticfiles import StaticFiles
 from fastapi import Request
 import asyncio
 import yaml
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Jinja2 templates
+templates = Jinja2Templates(directory="templates")
 
 # Load model for streaming
 model = YOLO("yolov8n.pt")
@@ -26,6 +42,13 @@ current_model_path = "yolov8n.pt"
 selected_classes = set(range(80))  # All classes selected by default
 confidence_threshold = 0.3
 tracking_enabled = False
+
+# Model comparison variables
+comparison_mode = False
+model_a = None
+model_b = None
+model_a_path = None
+model_b_path = None
 
 def update_tracker_config(track_high_thresh=0.5, track_low_thresh=0.1, new_track_thresh=0.6, 
                          track_buffer=30, match_thresh=0.8, frame_rate=30):
@@ -51,8 +74,34 @@ class StreamRequest(BaseModel):
 
 def get_available_models():
     """Get all .pt files in the current directory"""
-    pt_files = glob.glob("*.pt")
-    return pt_files
+    try:
+        # Get current directory
+        current_dir = os.getcwd()
+        print(f"Searching for models in: {current_dir}")
+        
+        # Get all .pt files
+        pt_files = glob.glob("*.pt")
+        print(f"Found .pt files: {pt_files}")
+        
+        # Verify each file exists and is readable
+        valid_models = []
+        for model_file in pt_files:
+            full_path = os.path.join(current_dir, model_file)
+            if os.path.exists(full_path) and os.access(full_path, os.R_OK):
+                file_size = os.path.getsize(full_path) / (1024 * 1024)  # Size in MB
+                valid_models.append({
+                    "name": model_file,
+                    "path": full_path,
+                    "size_mb": round(file_size, 2)
+                })
+                print(f"Valid model found: {model_file} ({file_size:.2f} MB)")
+            else:
+                print(f"Invalid or inaccessible model file: {model_file}")
+        
+        return [model["name"] for model in valid_models]
+    except Exception as e:
+        print(f"Error getting available models: {str(e)}")
+        return []
 
 def get_available_cameras():
     """Detect available cameras on the system"""
@@ -351,6 +400,121 @@ def generate_test_frames(camera_source):
         cap.release()
         print(f"Test camera {camera_source} released after {frame_count} frames")
 
+def generate_comparison_frames(camera_source):
+    """Generate video frames with two YOLO models side by side"""
+    global model_a, model_b, selected_classes, confidence_threshold, tracking_enabled
+    
+    print(f"Starting comparison stream for camera: {camera_source}")
+    
+    # Handle webcam case
+    if isinstance(camera_source, str) and camera_source.isdigit():
+        camera_source = int(camera_source)
+    
+    cap = cv2.VideoCapture(camera_source)
+    
+    if not cap.isOpened():
+        print(f"Failed to open camera: {camera_source}")
+        return
+    
+    # Set camera properties for better performance
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_FPS, 30)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    
+    print(f"Camera opened successfully: {camera_source}")
+    frame_count = 0
+    last_sent = time.time()
+    last_detection_time = time.time()
+    detection_interval = 1.0 / 30
+    
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                print(f"Failed to read frame {frame_count}")
+                break
+            
+            frame_count += 1
+            current_time = time.time()
+            
+            # Create a copy of the frame for each model
+            frame_a = frame.copy()
+            frame_b = frame.copy()
+            
+            # Process frame with model A
+            if model_a is not None and current_time - last_detection_time >= detection_interval:
+                if tracking_enabled:
+                    results_a = model_a.track(frame_a, conf=confidence_threshold, verbose=False, persist=True)
+                else:
+                    results_a = model_a(frame_a, conf=confidence_threshold, verbose=False)
+                
+                # Draw detections for model A
+                for result in results_a:
+                    boxes = result.boxes
+                    if boxes is not None:
+                        for i in range(len(boxes)):
+                            cls = int(boxes.cls[i].cpu().numpy())
+                            if cls not in selected_classes:
+                                continue
+                            box = boxes.xyxy[i].cpu().numpy().astype(int)
+                            conf = boxes.conf[i].cpu().numpy()
+                            class_name = model_a.names[cls]
+                            label = f"{class_name}: {conf:.2f}"
+                            
+                            cv2.rectangle(frame_a, (box[0], box[1]), (box[2], box[3]), (0, 255, 0), 2)
+                            cv2.putText(frame_a, label, (box[0], box[1] - 5), 
+                                      cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            
+            # Process frame with model B
+            if model_b is not None and current_time - last_detection_time >= detection_interval:
+                if tracking_enabled:
+                    results_b = model_b.track(frame_b, conf=confidence_threshold, verbose=False, persist=True)
+                else:
+                    results_b = model_b(frame_b, conf=confidence_threshold, verbose=False)
+                
+                # Draw detections for model B
+                for result in results_b:
+                    boxes = result.boxes
+                    if boxes is not None:
+                        for i in range(len(boxes)):
+                            cls = int(boxes.cls[i].cpu().numpy())
+                            if cls not in selected_classes:
+                                continue
+                            box = boxes.xyxy[i].cpu().numpy().astype(int)
+                            conf = boxes.conf[i].cpu().numpy()
+                            class_name = model_b.names[cls]
+                            label = f"{class_name}: {conf:.2f}"
+                            
+                            cv2.rectangle(frame_b, (box[0], box[1]), (box[2], box[3]), (0, 255, 0), 2)
+                            cv2.putText(frame_b, label, (box[0], box[1] - 5), 
+                                      cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            
+            # Add model labels
+            cv2.putText(frame_a, f"Model A: {model_a_path}", (10, 30), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            cv2.putText(frame_b, f"Model B: {model_b_path}", (10, 30), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            
+            # Combine frames side by side
+            combined_frame = np.hstack((frame_a, frame_b))
+            
+            # Encode and send frame
+            ret, buffer = cv2.imencode('.jpg', combined_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            if ret:
+                frame_bytes = buffer.tobytes()
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+                last_sent = time.time()
+            
+    except asyncio.CancelledError:
+        print(f"Comparison stream cancelled by client for camera {camera_source}")
+    except Exception as e:
+        print(f"Camera error: {e}")
+    finally:
+        cap.release()
+        print(f"Camera {camera_source} released after {frame_count} frames")
+
 @app.post("/load_model")
 async def load_model(model_data: dict):
     """Load a new YOLO model with proper GPU memory management"""
@@ -430,12 +594,76 @@ async def get_model_info():
     """Get current model information"""
     global model, current_model_path
     
-    return {
-        "current_model": current_model_path,
-        "available_models": get_available_models(),
-        "class_names": model.names,
-        "num_classes": len(model.names)
-    }
+    try:
+        print("\n=== Getting Model Info ===")
+        # Get current directory
+        current_dir = os.getcwd()
+        print(f"Current directory: {current_dir}")
+        
+        # List all files in directory
+        all_files = os.listdir(current_dir)
+        print(f"All files in directory: {all_files}")
+        
+        # Get all .pt files
+        pt_files = [f for f in all_files if f.endswith('.pt')]
+        print(f"Found .pt files: {pt_files}")
+        
+        # Verify each file exists and is readable
+        valid_models = []
+        for model_file in pt_files:
+            full_path = os.path.join(current_dir, model_file)
+            if os.path.exists(full_path) and os.access(full_path, os.R_OK):
+                file_size = os.path.getsize(full_path) / (1024 * 1024)  # Size in MB
+                valid_models.append({
+                    "name": model_file,
+                    "path": full_path,
+                    "size_mb": round(file_size, 2)
+                })
+                print(f"Valid model found: {model_file} ({file_size:.2f} MB)")
+            else:
+                print(f"Invalid or inaccessible model file: {model_file}")
+        
+        # Get current model info
+        current_model = {
+            "path": current_model_path,
+            "num_classes": len(model.names) if model else 0,
+            "class_names": model.names if model else {}
+        }
+        
+        response = {
+            "status": "success",
+            "current_model": current_model,
+            "available_models": [model["name"] for model in valid_models],
+            "class_names": model.names if model else {},
+            "num_classes": len(model.names) if model else 0,
+            "debug_info": {
+                "current_directory": current_dir,
+                "all_files": all_files,
+                "pt_files": pt_files,
+                "valid_models": valid_models
+            }
+        }
+        
+        print(f"Response: {response}")
+        print("=== End Model Info ===\n")
+        return response
+        
+    except Exception as e:
+        print(f"Error getting model info: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "current_model": None,
+            "available_models": [],
+            "class_names": {},
+            "num_classes": 0,
+            "debug_info": {
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            }
+        }
 
 @app.get("/gpu_status")
 async def gpu_status():
@@ -497,12 +725,6 @@ async def update_settings(settings: dict):
         "confidence": confidence_threshold, 
         "tracking": tracking_enabled
     }
-
-# Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# Jinja2 templates
-templates = Jinja2Templates(directory="templates")
 
 @app.get("/")
 async def index(request: Request):
@@ -572,3 +794,68 @@ async def upload_model(file: UploadFile = File(...)):
         return {"status": "success", "message": f"Model {file.filename} uploaded successfully.", "model_path": file.filename}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+@app.post("/start_comparison")
+async def start_comparison(comparison_data: dict):
+    """Start model comparison with two selected models"""
+    global model_a, model_b, model_a_path, model_b_path, comparison_mode
+    
+    try:
+        model_a_path = comparison_data.get('model_a')
+        model_b_path = comparison_data.get('model_b')
+        
+        if not model_a_path or not model_b_path:
+            raise HTTPException(status_code=400, detail="Both models must be specified")
+        
+        if not os.path.exists(model_a_path) or not os.path.exists(model_b_path):
+            raise HTTPException(status_code=400, detail="One or both model files not found")
+        
+        # Load both models
+        model_a = YOLO(model_a_path)
+        model_b = YOLO(model_b_path)
+        comparison_mode = True
+        
+        return {
+            "status": "success",
+            "message": "Comparison mode started",
+            "model_a": model_a_path,
+            "model_b": model_b_path
+        }
+    except Exception as e:
+        comparison_mode = False
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/stop_comparison")
+async def stop_comparison():
+    """Stop model comparison and clean up resources"""
+    global model_a, model_b, model_a_path, model_b_path, comparison_mode
+    
+    try:
+        # Clean up models
+        if model_a is not None:
+            del model_a
+            model_a = None
+        if model_b is not None:
+            del model_b
+            model_b = None
+        
+        model_a_path = None
+        model_b_path = None
+        comparison_mode = False
+        
+        # Force garbage collection
+        release_gpu_memory()
+        
+        return {"status": "success", "message": "Comparison mode stopped"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/comparison_feed/{camera_source}")
+async def comparison_feed(camera_source: str):
+    """Stream video frames with two YOLO models side by side"""
+    if not comparison_mode:
+        raise HTTPException(status_code=400, detail="Comparison mode not started")
+    return StreamingResponse(
+        generate_comparison_frames(camera_source),
+        media_type="multipart/x-mixed-replace; boundary=frame"
+    )

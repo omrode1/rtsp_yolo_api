@@ -191,6 +191,17 @@
             color: #666;
             margin-top: 5px;
         }
+        .comparison-controls {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 10px;
+        }
+        .model-select {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+        }
     </style>
 </head>
 <body>
@@ -213,8 +224,33 @@
                         Camera 1 is working on your system. Stop stream before detecting cameras to avoid conflicts.
                     </div>
                 </div>
+
+                <!-- Model Comparison Controls -->
+                <div class="comparison-controls">
+                    <h3>Model Comparison</h3>
+                    <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 200px;">
+                            <label>Model A:</label>
+                            <select id="modelA" class="model-select">
+                                <option value="">Select Model A...</option>
+                            </select>
+                        </div>
+                        <div style="flex: 1; min-width: 200px;">
+                            <label>Model B:</label>
+                            <select id="modelB" class="model-select">
+                                <option value="">Select Model B...</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button id="startComparisonBtn" class="btn-primary">Start Comparison</button>
+                            <button id="stopComparisonBtn" class="btn-secondary">Stop Comparison</button>
+                            <button id="refreshModelsBtn" class="btn-secondary">Refresh Models</button>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="video-container">
-                    <img id="videoStream" src="" alt="Video stream will appear here">
+                    <img id="videoStream" src="" alt="Video stream will appear here" style="width: 100%; max-width: 1280px;">
                 </div>
                 <div class="api-section">
                     <h3>API Endpoint for Detection Only:</h3>
@@ -305,5 +341,17 @@
         </div>
     </div>
     <script src="/static/app.js"></script>
+    <script>
+        // Initialize event listeners when the DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add click handlers for comparison buttons
+            document.getElementById('startComparisonBtn').addEventListener('click', startComparison);
+            document.getElementById('stopComparisonBtn').addEventListener('click', stopComparison);
+            document.getElementById('refreshModelsBtn').addEventListener('click', refreshModels);
+            
+            // Initial model population
+            updateModelSelectors();
+        });
+    </script>
 </body>
 </html> 

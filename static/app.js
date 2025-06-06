@@ -323,6 +323,165 @@ async function refreshModelSelector(selectModelPath) {
     await loadModel();
 }
 
+// Update model selectors when models are loaded
+async function updateModelSelectors() {
+    console.log('Attempting to update model selectors...');
+    try {
+        console.log('Fetching model info from server...');
+        const response = await fetch('/get_model_info');
+        console.log('Raw response:', response);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('Model info data:', data);
+        
+        if (data.status === 'error') {
+            console.error('Server returned error:', data.message);
+            console.error('Debug info:', data.debug_info);
+            return;
+        }
+        
+        const modelA = document.getElementById('modelA');
+        const modelB = document.getElementById('modelB');
+        
+        if (!modelA || !modelB) {
+            console.error('Model select elements not found');
+            return;
+        }
+        
+        // Clear existing options
+        modelA.innerHTML = '<option value="">Select Model A...</option>';
+        modelB.innerHTML = '<option value="">Select Model B...</option>';
+        
+        // Add available models
+        if (data.available_models && Array.isArray(data.available_models)) {
+            console.log('Found models:', data.available_models);
+            if (data.available_models.length === 0) {
+                console.warn('No models found in the response');
+            }
+            data.available_models.forEach(model => {
+                const optionA = document.createElement('option');
+                optionA.value = model;
+                optionA.textContent = model;
+                modelA.appendChild(optionA);
+                
+                const optionB = document.createElement('option');
+                optionB.value = model;
+                optionB.textContent = model;
+                modelB.appendChild(optionB);
+            });
+            console.log('Models populated successfully');
+        } else {
+            console.error('No models available or invalid data format:', data);
+            console.error('Debug info:', data.debug_info);
+        }
+    } catch (error) {
+        console.error('Error updating model selectors:', error);
+        console.error('Stack trace:', error.stack);
+    }
+}
+
+// Model comparison functions
+async function startComparison() {
+    console.log('Starting comparison...');
+    const modelA = document.getElementById('modelA').value;
+    const modelB = document.getElementById('modelB').value;
+    
+    if (!modelA || !modelB) {
+        alert('Please select both models for comparison');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/start_comparison', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model_a: modelA,
+                model_b: modelB
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            // Stop any existing stream
+            await stopStream();
+            
+            // Start comparison stream
+            const cameraSource = document.getElementById('cameraSource').value;
+            document.getElementById('videoStream').src = `/comparison_feed/${cameraSource}`;
+            
+            // Update UI
+            document.querySelector('.comparison-controls').style.backgroundColor = '#e8f5e9';
+        } else {
+            alert('Failed to start comparison: ' + data.message);
+        }
+    } catch (error) {
+        console.error('Error starting comparison:', error);
+        alert('Error starting comparison: ' + error.message);
+    }
+}
+
+async function stopComparison() {
+    console.log('Stopping comparison...');
+    try {
+        const response = await fetch('/stop_comparison', {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            // Stop the stream
+            document.getElementById('videoStream').src = '';
+            
+            // Update UI
+            document.querySelector('.comparison-controls').style.backgroundColor = '#f8f9fa';
+        } else {
+            alert('Failed to stop comparison: ' + data.message);
+        }
+    } catch (error) {
+        console.error('Error stopping comparison:', error);
+        alert('Error stopping comparison: ' + error.message);
+    }
+}
+
+// Add a function to manually refresh models
+async function refreshModels() {
+    console.log('Manually refreshing models...');
+    try {
+        await updateModelSelectors();
+        console.log('Manual refresh completed');
+    } catch (error) {
+        console.error('Error during manual refresh:', error);
+        console.error('Stack trace:', error.stack);
+    }
+}
+
+// Initialize everything when the page loads
+document.addEventListener('DOMContentLoaded', async () => {
+    console.log('DOM Content Loaded - Initializing...');
+    try {
+        await updateModelSelectors();
+        console.log('Initial model selector update completed');
+    } catch (error) {
+        console.error('Error during initialization:', error);
+        console.error('Stack trace:', error.stack);
+    }
+});
+
+// Export functions to global scope
+window.startComparison = startComparison;
+window.stopComparison = stopComparison;
+window.refreshModels = refreshModels;
+window.updateModelSelectors = updateModelSelectors;
+
 window.onload = function() {
     initializeClasses();
     updateGpuStatus();

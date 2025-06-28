@@ -1,309 +1,1167 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RTSP YOLO Detection Stream</title>
     <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body {
-            font-family: Arial, sans-serif;
+        * {
             margin: 0;
-            padding: 20px;
-            background-color: #f0f0f0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        .container {
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background-color: #000000;
+            color: #ffffff;
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        .app-container {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid #333;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+
+        .header-content {
             max-width: 1400px;
             margin: 0 auto;
-            background-color: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #333;
-            text-align: center;
-        }
-        .main-content {
             display: flex;
-            gap: 20px;
+            justify-content: space-between;
+            align-items: center;
         }
-        .video-section {
-            flex: 2;
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(45deg, #ffffff, #cccccc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
-        .controls-section {
+
+        .header-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        /* Main Content */
+        .main-content {
             flex: 1;
-            background-color: #f8f9fa;
-            padding: 20px;
-            border-radius: 10px;
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+            width: 100%;
         }
+
+        /* Video Section */
+        .video-section {
+            background: #111111;
+            border-radius: 16px;
+            padding: 2rem;
+            border: 1px solid #333;
+        }
+
+        .video-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .video-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #ffffff;
+        }
+
+        .video-status {
+            font-size: 0.875rem;
+            color: #888;
+            padding: 0.5rem 1rem;
+            background: #1a1a1a;
+            border-radius: 20px;
+            border: 1px solid #333;
+        }
+
         .video-container {
-            text-align: center;
-            margin: 20px 0;
+            position: relative;
+            background: #000000;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #333;
+            min-height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
+
         #videoStream {
             width: 100%;
-            max-width: 800px;
             height: auto;
-            border: 2px solid #ddd;
-            border-radius: 10px;
+            max-height: 600px;
+            object-fit: contain;
+            border-radius: 12px;
         }
-        .stream-controls {
+
+        .video-placeholder {
+            color: #666;
+            font-size: 1.1rem;
             text-align: center;
-            margin: 20px 0;
+            padding: 2rem;
         }
-        input, button, select {
-            padding: 10px;
-            margin: 5px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
+
+        /* Analytics Dashboard */
+        .analytics-dashboard {
+            margin-top: 2rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
         }
-        button {
-            background-color: #007bff;
-            color: white;
+
+        .metric-card {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 0.5rem;
+        }
+
+        .metric-label {
+            font-size: 0.875rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .metric-trend {
+            font-size: 0.75rem;
+            margin-top: 0.5rem;
+        }
+
+        .metric-trend.positive {
+            color: #66ff66;
+        }
+
+        .metric-trend.negative {
+            color: #ff6666;
+        }
+
+        /* Charts Section */
+        .charts-section {
+            margin-top: 2rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        .chart-container {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+
+        .chart-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .chart-title::before {
+            content: '';
+            width: 4px;
+            height: 16px;
+            background: linear-gradient(45deg, #ffffff, #cccccc);
+            border-radius: 2px;
+        }
+
+        .chart-canvas {
+            width: 100% !important;
+            height: 200px !important;
+        }
+
+        /* Detection History */
+        .detection-history {
+            margin-top: 2rem;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .history-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #ffffff;
+        }
+
+        .history-controls {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+
+        .history-table th,
+        .history-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #333;
+        }
+
+        .history-table th {
+            color: #888;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-size: 0.75rem;
+        }
+
+        .history-table td {
+            color: #ffffff;
+        }
+
+        .detection-count {
+            background: #333;
+            color: #ffffff;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        /* System Status */
+        .system-status {
+            margin-top: 2rem;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 1rem;
+            background: #222;
+            border-radius: 8px;
+            border: 1px solid #333;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .status-indicator.online {
+            background: #66ff66;
+            box-shadow: 0 0 10px rgba(102, 255, 102, 0.3);
+        }
+
+        .status-indicator.warning {
+            background: #ffaa00;
+            box-shadow: 0 0 10px rgba(255, 170, 0, 0.3);
+        }
+
+        .status-indicator.offline {
+            background: #ff6666;
+            box-shadow: 0 0 10px rgba(255, 102, 102, 0.3);
+        }
+
+        .status-info h4 {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 0.25rem;
+        }
+
+        .status-info p {
+            font-size: 0.75rem;
+            color: #888;
+        }
+
+        /* Controls Section */
+        .controls-section {
+            background: #111111;
+            border-radius: 16px;
+            padding: 2rem;
+            border: 1px solid #333;
+            height: fit-content;
+            position: sticky;
+            top: 120px;
+        }
+
+        .control-group {
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid #333;
+        }
+
+        .control-group:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
+        .control-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .control-title::before {
+            content: '';
+            width: 4px;
+            height: 16px;
+            background: linear-gradient(45deg, #ffffff, #cccccc);
+            border-radius: 2px;
+        }
+
+        /* Camera Controls */
+        .camera-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .camera-input-group {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .camera-input {
+            flex: 1;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            color: #ffffff;
+            font-size: 0.875rem;
+            transition: all 0.2s ease;
+        }
+
+        .camera-input:focus {
+            outline: none;
+            border-color: #ffffff;
+            background: #222;
+        }
+
+        .camera-select {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            color: #ffffff;
+            font-size: 0.875rem;
+            min-width: 150px;
             cursor: pointer;
         }
-        button:hover {
-            background-color: #0056b3;
+
+        .camera-select:focus {
+            outline: none;
+            border-color: #ffffff;
         }
-        .model-control {
-            margin: 20px 0;
-            padding: 15px;
-            background-color: #e9ecef;
-            border-radius: 5px;
+
+        .camera-select option {
+            background: #1a1a1a;
+            color: #ffffff;
         }
-        .model-control select {
-            width: 100%;
-            margin: 10px 0;
-        }
-        .model-info {
-            font-size: 12px;
+
+        .camera-select option:disabled {
             color: #666;
-            margin-top: 10px;
         }
-        .confidence-control {
-            margin: 20px 0;
+
+        .button-group {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
         }
-        .confidence-slider {
+
+        .btn {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            color: #ffffff;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            min-width: fit-content;
+        }
+
+        .btn:hover {
+            background: #222;
+            border-color: #ffffff;
+            transform: translateY(-1px);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #ffffff 0%, #cccccc 100%);
+            color: #000000;
+            border: none;
+            font-weight: 600;
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #f0f0f0 0%, #bbbbbb 100%);
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            background: #2a1a1a;
+            border-color: #663333;
+            color: #ff6666;
+        }
+
+        .btn-danger:hover {
+            background: #3a2a2a;
+            border-color: #ff6666;
+        }
+
+        /* Model Controls */
+        .model-select {
             width: 100%;
-            margin: 10px 0;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            color: #ffffff;
+            font-size: 0.875rem;
+            margin-bottom: 1rem;
         }
-        .class-filter {
-            margin: 20px 0;
+
+        .model-select:focus {
+            outline: none;
+            border-color: #ffffff;
         }
-        .class-checkboxes {
-            max-height: 300px;
-            overflow-y: auto;
-            border: 1px solid #ddd;
-            padding: 10px;
-            border-radius: 5px;
-            background-color: white;
+
+        .file-upload {
+            position: relative;
+            margin-bottom: 1rem;
         }
-        .class-checkbox {
+
+        .file-upload input[type="file"] {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .file-upload-label {
             display: block;
-            margin: 5px 0;
-            padding: 2px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            color: #ffffff;
+            font-size: 0.875rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
         }
-        .class-checkbox input {
-            margin-right: 8px;
+
+        .file-upload-label:hover {
+            background: #222;
+            border-color: #ffffff;
         }
-        .class-controls {
-            margin: 10px 0;
+
+        .status-text {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 0.5rem;
+            line-height: 1.4;
         }
-        .class-controls button {
-            margin: 0 5px;
-            padding: 5px 10px;
-            font-size: 12px;
-        }
-        .api-section {
-            margin-top: 30px;
-            padding: 20px;
-            background-color: #f8f9fa;
-            border-radius: 5px;
-        }
-        .loading {
-            color: #007bff;
+
+        .status-text.loading {
+            color: #ffffff;
             font-style: italic;
         }
-        /* Toggle switch CSS */
-        .switch {
-            position: relative;
-            display: inline-block;
-            width: 50px;
-            height: 24px;
+
+        .status-text.success {
+            color: #66ff66;
         }
-        .switch input {display:none;}
-        .slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background-color: #ccc;
-            transition: .4s;
-            border-radius: 24px;
+
+        .status-text.error {
+            color: #ff6666;
         }
-        .slider:before {
-            position: absolute;
-            content: "";
-            height: 18px;
-            width: 18px;
-            left: 3px;
-            bottom: 3px;
-            background-color: white;
-            transition: .4s;
+
+        /* Confidence Control */
+        .confidence-control {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .confidence-slider {
+            width: 100%;
+            height: 6px;
+            background: #333;
+            border-radius: 3px;
+            outline: none;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
+        .confidence-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #ffffff;
             border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
         }
-        input:checked + .slider {
-            background-color: #007bff;
+
+        .confidence-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #ffffff;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
         }
-        input:checked + .slider:before {
-            transform: translateX(26px);
+
+        .confidence-value {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.875rem;
+            color: #888;
         }
-        @media (max-width: 768px) {
+
+        .confidence-number {
+            color: #ffffff;
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        /* Tracking Controls */
+        .tracking-toggle {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 26px;
+            background: #333;
+            border-radius: 13px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .toggle-switch.active {
+            background: #ffffff;
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 20px;
+            height: 20px;
+            background: #ffffff;
+            border-radius: 50%;
+            transition: all 0.3s ease;
+        }
+
+        .toggle-switch.active::after {
+            transform: translateX(24px);
+            background: #000000;
+        }
+
+        .tracking-status {
+            font-size: 0.875rem;
+            color: #888;
+        }
+
+        .tracking-params {
+            display: none;
+            gap: 1rem;
+            flex-direction: column;
+        }
+
+        .tracking-params.active {
+            display: flex;
+        }
+
+        .param-group {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 1rem;
+        }
+
+        .param-label {
+            display: block;
+            font-size: 0.75rem;
+            color: #888;
+            margin-bottom: 0.5rem;
+        }
+
+        .param-value {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.875rem;
+            color: #888;
+        }
+
+        .param-number {
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        .param-info {
+            font-size: 0.625rem;
+            color: #666;
+            margin-top: 0.25rem;
+            line-height: 1.3;
+        }
+
+        /* Class Filter */
+        .class-controls {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .class-checkboxes {
+            max-height: 200px;
+            overflow-y: auto;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 1rem;
+        }
+
+        .class-checkboxes::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .class-checkboxes::-webkit-scrollbar-track {
+            background: #1a1a1a;
+            border-radius: 3px;
+        }
+
+        .class-checkboxes::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 3px;
+        }
+
+        .class-checkboxes::-webkit-scrollbar-thumb:hover {
+            background: #444;
+        }
+
+        .class-checkbox {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 0;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-radius: 4px;
+            padding-left: 0.5rem;
+        }
+
+        .class-checkbox:hover {
+            background: #222;
+        }
+
+        .class-checkbox input[type="checkbox"] {
+            margin-right: 0.75rem;
+            width: 16px;
+            height: 16px;
+            accent-color: #ffffff;
+        }
+
+        .class-checkbox label {
+            font-size: 0.875rem;
+            color: #ffffff;
+            cursor: pointer;
+            flex: 1;
+        }
+
+        /* API Section */
+        .api-section {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .api-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 1rem;
+        }
+
+        .api-endpoint {
+            background: #000000;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.75rem;
+            color: #ffffff;
+            line-height: 1.4;
+            overflow-x: auto;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1024px) {
             .main-content {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+                padding: 1rem;
+            }
+
+            .controls-section {
+                position: static;
+                order: -1;
+            }
+
+            .header-content {
                 flex-direction: column;
+                gap: 1rem;
+                text-align: center;
+            }
+
+            .header-actions {
+                justify-content: center;
+            }
+
+            .charts-section {
+                grid-template-columns: 1fr;
+            }
+
+            .analytics-dashboard {
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             }
         }
-        .tracking-control {
-            margin: 20px 0;
+
+        @media (max-width: 768px) {
+            .header {
+                padding: 1rem;
+            }
+
+            .main-content {
+                padding: 1rem;
+            }
+
+            .video-section,
+            .controls-section {
+                padding: 1rem;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            .camera-input-group {
+                flex-direction: column;
+            }
+
+            .camera-select {
+                min-width: auto;
+            }
+
+            .analytics-dashboard {
+                grid-template-columns: 1fr;
+            }
+
+            .status-grid {
+                grid-template-columns: 1fr;
+            }
         }
-        .tracking-param {
-            margin: 10px 0;
-            padding: 10px;
-            background-color: #f8f9fa;
-            border-radius: 5px;
-        }
-        .tracking-param label {
-            display: block;
-            margin-bottom: 5px;
-            color: #666;
-        }
-        .tracking-param input[type="range"] {
-            width: 100%;
-            margin: 5px 0;
-        }
-        .tracking-param span {
+
+        /* Loading States */
+        .loading-spinner {
             display: inline-block;
-            min-width: 40px;
-            text-align: right;
-            color: #007bff;
-            font-weight: bold;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #333;
+            border-radius: 50%;
+            border-top-color: #ffffff;
+            animation: spin 1s ease-in-out infinite;
         }
-        .param-info {
-            font-size: 12px;
-            color: #666;
-            margin-top: 5px;
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Status Icons */
+        .status-icon {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+
+        .status-icon.working {
+            background: #66ff66;
+        }
+
+        .status-icon.warning {
+            background: #ffaa00;
+        }
+
+        .status-icon.error {
+            background: #ff6666;
+        }
+
+        .status-icon.locked {
+            background: #6666ff;
+        }
+
+        /* Pulse Animation for Live Data */
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        .live-data {
+            animation: pulse 2s infinite;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>RTSP YOLO Detection Stream</h1>
-        <div class="main-content">
-            <div class="video-section">
-                <div class="stream-controls">
-                    <div style="display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap;">
-                        <input type="text" id="cameraSource" placeholder="Camera source (0, 1, or RTSP URL)" value="1" style="flex: 1; min-width: 200px;">
-                        <select id="cameraSelector" onchange="selectCamera()" style="min-width: 150px;">
-                            <option value="">Select Camera...</option>
-                        </select>
-                        <button onclick="detectCameras()">Detect Cameras</button>
-                        <button onclick="startStream()">Start Stream</button>
-                        <button onclick="startTestStream()">Test Stream (Raw)</button>
-                        <button onclick="stopStream()">Stop Stream</button>
-                    </div>
-                    <div id="cameraStatus" style="margin-top: 10px; font-size: 12px; color: #666; text-align: center;">
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">RTSP YOLO Detection</div>
+                <div class="header-actions">
+                    <div class="video-status" id="cameraStatus">
                         Camera 1 is working on your system. Stop stream before detecting cameras to avoid conflicts.
                     </div>
                 </div>
-                <div class="video-container">
-                    <img id="videoStream" src="" alt="Video stream will appear here">
-                </div>
-                <div class="api-section">
-                    <h3>API Endpoint for Detection Only:</h3>
-                    <p><strong>POST</strong> /detect_rtsp/</p>
-                    <pre>{
-  "rtsp_url": "1",
-  "max_frames": 5,
-  "skip_seconds": 2
-}</pre>
-                </div>
             </div>
-            <div class="controls-section">
-                <div class="model-control">
-                    <h3>Model Selection</h3>
-                    <select id="modelSelector" onchange="loadModel()">
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Video Section -->
+            <section class="video-section">
+                <div class="video-header">
+                    <h2 class="video-title">Live Detection Stream</h2>
+                </div>
+                
+                <div class="camera-controls">
+                    <div class="camera-input-group">
+                        <input type="text" id="cameraSource" class="camera-input" placeholder="Camera source (0, 1, or RTSP URL)" value="1">
+                        <select id="cameraSelector" class="camera-select" onchange="selectCamera()">
+                            <option value="">Select Camera...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="button-group">
+                        <button class="btn" onclick="detectCameras()">
+                            <span class="loading-spinner" style="display: none;"></span>
+                            Detect Cameras
+                        </button>
+                        <button class="btn btn-primary" onclick="startStream()">Start Stream</button>
+                        <button class="btn" onclick="startTestStream()">Test Stream (Raw)</button>
+                        <button class="btn btn-danger" onclick="stopStream()">Stop Stream</button>
+                    </div>
+                </div>
+
+                <div class="video-container">
+                    <img id="videoStream" src="" alt="Video stream will appear here" style="display: none;">
+                    <div class="video-placeholder" id="videoPlaceholder">
+                        Click "Start Stream" to begin detection
+                    </div>
+                </div>
+
+                <!-- Analytics Dashboard -->
+                <div class="analytics-dashboard">
+                    <div class="metric-card">
+                        <div class="metric-value live-data" id="totalDetections">0</div>
+                        <div class="metric-label">Total Detections</div>
+                        <div class="metric-trend positive" id="detectionTrend">+12% vs last hour</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value live-data" id="fpsCounter">0</div>
+                        <div class="metric-label">FPS</div>
+                        <div class="metric-trend" id="fpsTrend">Real-time</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value live-data" id="activeObjects">0</div>
+                        <div class="metric-label">Active Objects</div>
+                        <div class="metric-trend" id="objectsTrend">Currently tracking</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value live-data" id="confidenceAvg">0.00</div>
+                        <div class="metric-label">Avg Confidence</div>
+                        <div class="metric-trend" id="confidenceTrend">Last 100 detections</div>
+                    </div>
+                </div>
+
+                <!-- Charts Section -->
+                <div class="charts-section">
+                    <div class="chart-container">
+                        <h3 class="chart-title">Detection Rate Over Time</h3>
+                        <canvas id="detectionChart" class="chart-canvas"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3 class="chart-title">Object Class Distribution</h3>
+                        <canvas id="classChart" class="chart-canvas"></canvas>
+                    </div>
+                </div>
+
+                <!-- Detection History -->
+                <div class="detection-history">
+                    <div class="history-header">
+                        <h3 class="history-title">Recent Detections</h3>
+                        <div class="history-controls">
+                            <button class="btn" onclick="clearHistory()">Clear</button>
+                            <button class="btn" onclick="exportHistory()">Export</button>
+                        </div>
+                    </div>
+                    <div style="max-height: 300px; overflow-y: auto;">
+                        <table class="history-table" id="detectionTable">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Class</th>
+                                    <th>Confidence</th>
+                                    <th>Count</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="detectionTableBody">
+                                <!-- Detection history will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- System Status -->
+                <div class="system-status">
+                    <h3 class="chart-title">System Status</h3>
+                    <div class="status-grid">
+                        <div class="status-item">
+                            <div class="status-indicator online" id="gpuStatus"></div>
+                            <div class="status-info">
+                                <h4>GPU Processing</h4>
+                                <p id="gpuInfo">Checking...</p>
+                            </div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-indicator online" id="modelStatus"></div>
+                            <div class="status-info">
+                                <h4>Model Status</h4>
+                                <p id="modelInfo">Ready</p>
+                            </div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-indicator online" id="streamStatus"></div>
+                            <div class="status-info">
+                                <h4>Stream Status</h4>
+                                <p id="streamInfo">Idle</p>
+                            </div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-indicator online" id="memoryStatus"></div>
+                            <div class="status-info">
+                                <h4>Memory Usage</h4>
+                                <p id="memoryInfo">Checking...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="api-section">
+                    <h3 class="api-title">API Endpoint for Detection Only</h3>
+                    <div class="api-endpoint">
+                        <strong>POST</strong> /detect_rtsp/
+                        <br><br>
+                        {
+                        <br>&nbsp;&nbsp;"rtsp_url": "1",
+                        <br>&nbsp;&nbsp;"max_frames": 5,
+                        <br>&nbsp;&nbsp;"skip_seconds": 2
+                        <br>}
+                    </div>
+                </div>
+            </section>
+
+            <!-- Controls Section -->
+            <aside class="controls-section">
+                <!-- Model Selection -->
+                <div class="control-group">
+                    <h3 class="control-title">Model Selection</h3>
+                    <select id="modelSelector" class="model-select" onchange="loadModel()">
                         {% for model_file in available_models %}
                         <option value="{{ model_file }}" {% if model_file == current_model_path %}selected{% endif %}>{{ model_file }}</option>
                         {% endfor %}
                     </select>
-                    <button onclick="loadModel()">Load Model</button>
-                    <button onclick="clearGpuMemory()" style="background-color: #dc3545;">Clear GPU Memory</button>
-                    <div style="margin-top:10px;">
-                        <input type="file" id="modelUpload" accept=".pt">
-                        <button onclick="uploadModel()">Upload Model</button>
+                    
+                    <div class="button-group">
+                        <button class="btn" onclick="loadModel()">Load Model</button>
+                        <button class="btn btn-danger" onclick="clearGpuMemory()">Clear GPU Memory</button>
                     </div>
-                    <div id="uploadStatus" class="model-info"></div>
-                    <div id="modelStatus" class="model-info">
+                    
+                    <div class="file-upload">
+                        <input type="file" id="modelUpload" accept=".pt">
+                        <label for="modelUpload" class="file-upload-label">Upload Model File</label>
+                    </div>
+                    <button class="btn btn-primary" onclick="uploadModel()" style="width: 100%;">Upload Model</button>
+                    
+                    <div id="uploadStatus" class="status-text"></div>
+                    <div id="modelStatus" class="status-text">
                         Current: {{ current_model_path }} ({{ class_names|length }} classes)
                     </div>
-                    <div id="gpuStatus" class="model-info">
+                    <div id="gpuStatus" class="status-text">
                         <span class="loading">Loading GPU status...</span>
                     </div>
                 </div>
-                <div class="confidence-control">
-                    <h3>Confidence Threshold</h3>
-                    <input type="range" id="confidenceSlider" class="confidence-slider" min="0.1" max="0.9" step="0.05" value="0.3" oninput="updateConfidence(this.value)">
-                    <div>Confidence: <span id="confidenceValue">0.30</span></div>
-                </div>
-                <div class="tracking-control">
-                    <h3>Tracking</h3>
-                    <label class="switch">
-                        <input type="checkbox" id="trackingToggle" onchange="updateTracking()">
-                        <span class="slider round"></span>
-                    </label>
-                    <span id="trackingStatus">Off</span>
-                    
-                    <div id="trackingParams" style="margin-top: 15px; display: none;">
-                        <div class="tracking-param">
-                            <label>Track Confidence Threshold</label>
-                            <input type="range" id="trackThreshSlider" min="0.1" max="0.9" step="0.05" value="0.5" 
-                                   oninput="updateTrackThresh(this.value)">
-                            <span id="trackThreshValue">0.50</span>
-                            <div class="param-info">Minimum confidence for tracking (higher = more strict)</div>
-                        </div>
-                        
-                        <div class="tracking-param">
-                            <label>Track Buffer (frames)</label>
-                            <input type="range" id="trackBufferSlider" min="10" max="60" step="1" value="30" 
-                                   oninput="updateTrackBuffer(this.value)">
-                            <span id="trackBufferValue">30</span>
-                            <div class="param-info">How long to keep tracking after object disappears</div>
-                        </div>
-                        
-                        <div class="tracking-param">
-                            <label>Match Threshold</label>
-                            <input type="range" id="matchThreshSlider" min="0.1" max="0.9" step="0.05" value="0.8" 
-                                   oninput="updateMatchThresh(this.value)">
-                            <span id="matchThreshValue">0.80</span>
-                            <div class="param-info">Minimum IOU for matching objects (higher = more strict)</div>
+
+                <!-- Confidence Control -->
+                <div class="control-group">
+                    <h3 class="control-title">Confidence Threshold</h3>
+                    <div class="confidence-control">
+                        <input type="range" id="confidenceSlider" class="confidence-slider" min="0.1" max="0.9" step="0.05" value="0.3" oninput="updateConfidence(this.value)">
+                        <div class="confidence-value">
+                            <span>Confidence</span>
+                            <span class="confidence-number" id="confidenceValue">0.30</span>
                         </div>
                     </div>
                 </div>
-                <div class="class-filter">
-                    <h3>Class Filter</h3>
+
+                <!-- Tracking Control -->
+                <div class="control-group">
+                    <h3 class="control-title">Object Tracking</h3>
+                    <div class="tracking-toggle">
+                        <div class="toggle-switch" id="trackingToggle" onclick="toggleTracking()"></div>
+                        <span class="tracking-status" id="trackingStatus">Off</span>
+                    </div>
+                    
+                    <div id="trackingParams" class="tracking-params">
+                        <div class="param-group">
+                            <label class="param-label">Track Confidence Threshold</label>
+                            <input type="range" id="trackThreshSlider" class="confidence-slider" min="0.1" max="0.9" step="0.05" value="0.5" oninput="updateTrackThresh(this.value)">
+                            <div class="param-value">
+                                <span>Minimum confidence for tracking</span>
+                                <span class="param-number" id="trackThreshValue">0.50</span>
+                            </div>
+                            <div class="param-info">Higher values = more strict tracking</div>
+                        </div>
+                        
+                        <div class="param-group">
+                            <label class="param-label">Track Buffer (frames)</label>
+                            <input type="range" id="trackBufferSlider" class="confidence-slider" min="10" max="60" step="1" value="30" oninput="updateTrackBuffer(this.value)">
+                            <div class="param-value">
+                                <span>How long to keep tracking</span>
+                                <span class="param-number" id="trackBufferValue">30</span>
+                            </div>
+                            <div class="param-info">Frames to keep tracking after object disappears</div>
+                        </div>
+                        
+                        <div class="param-group">
+                            <label class="param-label">Match Threshold</label>
+                            <input type="range" id="matchThreshSlider" class="confidence-slider" min="0.1" max="0.9" step="0.05" value="0.8" oninput="updateMatchThresh(this.value)">
+                            <div class="param-value">
+                                <span>Minimum IOU for matching</span>
+                                <span class="param-number" id="matchThreshValue">0.80</span>
+                            </div>
+                            <div class="param-info">Higher values = more strict matching</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Class Filter -->
+                <div class="control-group">
+                    <h3 class="control-title">Class Filter</h3>
                     <div class="class-controls">
-                        <button onclick="selectAllClasses()">Select All</button>
-                        <button onclick="deselectAllClasses()">Deselect All</button>
+                        <button class="btn" onclick="selectAllClasses()">Select All</button>
+                        <button class="btn" onclick="deselectAllClasses()">Deselect All</button>
                     </div>
                     <div id="classCheckboxes" class="class-checkboxes">
                         {% for class_id, class_name in class_names.items() %}
-                        <label class="class-checkbox">
-                            <input type="checkbox" value="{{ class_id }}" checked onchange="updateClassFilter()"> {{ class_name }}
-                        </label>
+                        <div class="class-checkbox">
+                            <input type="checkbox" id="class_{{ class_id }}" value="{{ class_id }}" checked onchange="updateClassFilter()">
+                            <label for="class_{{ class_id }}">{{ class_name }}</label>
+                        </div>
                         {% endfor %}
                     </div>
                 </div>
-            </div>
-        </div>
+            </aside>
+        </main>
     </div>
+
     <script src="/static/app.js"></script>
 </body>
 </html> 

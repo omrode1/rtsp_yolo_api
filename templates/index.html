@@ -1064,8 +1064,8 @@
                 <div class="control-group">
                     <h3 class="control-title">Model Selection</h3>
                     <select id="modelSelector" class="model-select" onchange="loadModel()">
-                        {% for model_file in available_models %}
-                        <option value="{{ model_file }}" {% if model_file == current_model_path %}selected{% endif %}>{{ model_file }}</option>
+                        {% for model_info in available_models %}
+                        <option value="{{ model_info.path }}" {% if model_info.path == current_model_path %}selected{% endif %}>{{ model_info.display_name }}</option>
                         {% endfor %}
                     </select>
                     
@@ -1086,6 +1086,40 @@
                     </div>
                     <div id="gpuStatus" class="status-text">
                         <span class="loading">Loading GPU status...</span>
+                    </div>
+                </div>
+
+                <!-- Model Type -->
+                <div class="control-group">
+                    <h3 class="control-title">Model Type</h3>
+                    <div class="model-type-info">
+                        <div class="model-type-badge" id="currentModelType">
+                            {{ current_model_type.title() }}
+                        </div>
+                        <div class="model-type-description" id="modelTypeDescription">
+                            {% if current_model_type == 'detection' %}
+                                Object detection with bounding boxes
+                            {% elif current_model_type == 'segmentation' %}
+                                Instance segmentation with pixel masks
+                            {% elif current_model_type == 'pose' %}
+                                Human pose estimation with keypoints
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="model-type-selector">
+                        <button class="btn btn-type" onclick="switchModelType('detection')" 
+                                {% if current_model_type == 'detection' %}disabled{% endif %}>
+                            Detection
+                        </button>
+                        <button class="btn btn-type" onclick="switchModelType('segmentation')"
+                                {% if current_model_type == 'segmentation' %}disabled{% endif %}>
+                            Segmentation
+                        </button>
+                        <button class="btn btn-type" onclick="switchModelType('pose')"
+                                {% if current_model_type == 'pose' %}disabled{% endif %}>
+                            Pose
+                        </button>
                     </div>
                 </div>
 
